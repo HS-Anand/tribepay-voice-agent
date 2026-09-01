@@ -104,8 +104,6 @@ Open `http://127.0.0.1:8000`
 - Show my profile
 - What groups am I in?
 - Who is in the Goa trip group?
-- Show my settlement with Priya
-- Settle with Priya
 
 For pay, reject, and settle actions, the agent asks for a separate confirmation turn before moving money.
 
