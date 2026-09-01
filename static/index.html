@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TribePay Voice</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 760px;
+    margin: 40px auto;
+    padding: 20px;
+    background: #f4f6f8;
+    color: #111;
+  }
+  .card {
+    background: white;
+    border-radius: 18px;
+    padding: 28px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  }
+  h1 { margin-top: 0; }
+  button {
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 22px;
+    font-size: 16px;
+    cursor: pointer;
+    background: #111;
+    color: white;
+  }
+  button.secondary { background: #e8ebef; color: #111; }
+  #mic {
+    font-size: 22px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-right: 12px;
+  }
+  #status { margin: 18px 0; color: #666; min-height: 1.2em; }
+  .bubble {
+    padding: 14px;
+    border-radius: 14px;
+    background: #f0f3f6;
+    margin: 10px 0;
+    line-height: 1.45;
+  }
+  .bubble.user { background: #e7f0ff; }
+  .bubble.agent { background: #eef8ef; }
+  input, textarea {
+    padding: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 8px 0;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font: inherit;
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .hint { color: #666; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>TribePay Voice</h1>
+  <p class="hint">Ask about transactions, wallet balance, invoices, settlements, and groups.</p>
+
+  <div id="login">
+    <input id="phone" placeholder="TribePay phone number" autocomplete="username">
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div id="app" style="display:none">
+    <p id="status">Press the microphone and speak, or type a question below.</p>
+    <div class="row">
+      <button id="mic" onclick="listen()">●</button>
+      <button class="secondary" onclick="resetConversation()">Clear chat</button>
+    </div>
+    <textarea id="typed" rows="2" placeholder="Or type: Did I pay Raj 500 in June?"></textarea>
+    <button onclick="askTyped()">Ask</button>
+    <div id="conversation"></div>
+  </div>
+</div>
+
+<script>
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition;
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+async function login() {
+  const phone = $("phone").value.trim();
+  const password = $("password").value;
+  $("status").textContent = "Logging in...";
+
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_number: phone, password }),
+  });
+
+  if (!response.ok) {
+    $("status").textContent = "Login failed.";
+    return;
+  }
+
+  $("login").style.display = "none";
+  $("app").style.display = "block";
+  $("status").textContent = "Logged in. Press the microphone and speak, or type a question.";
+}
+
+async function askAgent(text) {
+  add("You", text, "user");
+  $("status").textContent = "Thinking...";
+
+  const response = await fetch("/api/agent/query", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  const data = await response.json();
+  const answer = data.text || "No response.";
+  add("TribePay", answer, "agent");
+  speak(answer);
+  $("status").textContent = "Press the microphone and speak, or type a question below.";
+}
+
+function listen() {
+  if (!SpeechRecognition) {
+    $("status").textContent = "Speech recognition is not available in this browser. Use the text box.";
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "en-IN";
+  recognition.interimResults = false;
+  $("status").textContent = "Listening...";
+
+  recognition.onresult = async (event) => {
+    const text = event.results[0][0].transcript;
+    await askAgent(text);
+  };
+
+  recognition.onerror = (event) => {
+    $("status").textContent = "Speech error: " + event.error;
+  };
+
+  recognition.start();
+}
+
+function askTyped() {
+  const text = $("typed").value.trim();
+  if (!text) return;
+  $("typed").value = "";
+  askAgent(text);
+}
+
+function add(who, text, kind) {
+  const node = document.createElement("div");
+  node.className = "bubble " + (kind || "");
+  node.textContent = who + ": " + text;
+  $("conversation").prepend(node);
+}
+
+function speak(text) {
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
+function resetConversation() {
+  $("conversation").innerHTML = "";
+  $("status").textContent = "Conversation cleared.";
+}
+
+$("typed").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    askTyped();
+  }
+});
+</script>
+</body>
+</html>
